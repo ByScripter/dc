@@ -3,10 +3,23 @@ from discord.ext import commands
 import os
 import sys
 import json
+from cryptography.fernet import Fernet
 
-# Botu başlatmak için gereken token (kendi botunun token'ını buraya yapıştır)
-TOKEN = ''
-YOUR_DISCORD_ID =   # Bot sahibinin Discord ID'sini buraya ekleyin
+# Şifreleme anahtarını yükle
+with open('secret.key', 'rb') as key_file:
+    key = key_file.read()
+
+cipher = Fernet(key)
+
+# Şifrelenmiş verileri JSON dosyasından oku
+with open('encrypted_data.json', 'r') as file:
+    data = json.load(file)
+    encrypted_token = data['ENCRYPTED_TOKEN']
+    encrypted_discord_id = data['ENCRYPTED_DISCORD_ID']
+
+# Şifreli verileri çöz
+TOKEN = cipher.decrypt(encrypted_token.encode()).decode()
+YOUR_DISCORD_ID = int(cipher.decrypt(encrypted_discord_id.encode()).decode())
 
 # Botu başlat
 intents = discord.Intents.default()
@@ -53,7 +66,7 @@ async def kayıtlırol(interaction: discord.Interaction, role: discord.Role):
     if interaction.user.id != interaction.guild.owner_id:
         await interaction.response.send_message("Bu komutu sadece sunucu sahibi kullanabilir.", ephemeral=True)
         return
-
+    
     registered_role_id = role.id
     save_roles()
     await interaction.response.send_message(f'Kayıtlı rol {role.name} olarak ayarlandı!')
@@ -64,7 +77,7 @@ async def kayitcirol(interaction: discord.Interaction, role: discord.Role):
     if interaction.user.id != interaction.guild.owner_id:
         await interaction.response.send_message("Bu komutu sadece sunucu sahibi kullanabilir.", ephemeral=True)
         return
-
+    
     kayitci_role_id = role.id
     save_roles()
     await interaction.response.send_message(f'Kayıtcı rol {role.name} olarak ayarlandı!')
@@ -76,14 +89,14 @@ async def kayitci(interaction: discord.Interaction, member: discord.Member):
         return
 
     kayitci_role = interaction.guild.get_role(kayitci_role_id)
-
+    
     if kayitci_role:
         await member.add_roles(kayitci_role)
         await interaction.response.send_message(f'{member.mention} başarıyla {kayitci_role.name} rolü verildi!')
     else:
         await interaction.response.send_message("Belirtilen rol bulunamadı.", ephemeral=True)
 
-@bot.tree.command(name="kayıt", description="Kullanıcıyı kaydet, isim ve yaş bilgisi ile rol ver.")
+@bot.tree.command(name="kayıt", description="Etiketlenen kullanıcıyı kaydet ve rol ver (Sadece Kayıtcı rolü olanlar kullanabilir).")
 async def kayıt(interaction: discord.Interaction, member: discord.Member, isim: str, yaş: int):
     if registered_role_id is None:
         await interaction.response.send_message("Henüz bir kayıtlı rolü belirlenmedi.", ephemeral=True)
@@ -95,19 +108,15 @@ async def kayıt(interaction: discord.Interaction, member: discord.Member, isim:
         return
 
     registered_role = interaction.guild.get_role(registered_role_id)
-
+    
     if registered_role:
         if registered_role in member.roles:
             await interaction.response.send_message(f'{member.mention} zaten kayıtlı.', ephemeral=True)
         else:
-            # Kullanıcıya rol ver ve dosyaya kaydet
             await member.add_roles(registered_role)
-            yeni_isim = f"{isim} | {yaş}"
-            await member.edit(nick=yeni_isim)
-
             with open(REGISTERED_USERS_FILE, 'a') as file:
-                file.write(f'{yeni_isim} ({member.id})\n')
-
+                file.write(f'{isim} | {yaş} ({member.id})\n')
+            
             await interaction.response.send_message(f'{member.mention} başarıyla kaydedildi ve {registered_role.name} rolü verildi!')
     else:
         await interaction.response.send_message("Belirtilen rol bulunamadı.", ephemeral=True)
@@ -117,7 +126,7 @@ async def ban(interaction: discord.Interaction, user: discord.Member):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("Bu komutu sadece yöneticiler kullanabilir.", ephemeral=True)
         return
-
+    
     await user.ban(reason=f"{interaction.user.name} tarafından banlandı.")
     await interaction.response.send_message(f'{user.name} başarıyla banlandı!')
 
@@ -139,11 +148,12 @@ async def restart(interaction: discord.Interaction):
     if interaction.user.id != YOUR_DISCORD_ID:
         await interaction.response.send_message("Bu komutu sadece bot sahibi kullanabilir.", ephemeral=True)
         return
-
+    
     await interaction.response.send_message("Bot yeniden başlatılıyor...")
-
+    
     # Botu kapatıp yeniden başlatmak için mevcut Python işlemini yeniden başlatır
     os.execv(sys.executable, ['python'] + sys.argv)
 
 # Botu çalıştır
 bot.run(TOKEN)
+
